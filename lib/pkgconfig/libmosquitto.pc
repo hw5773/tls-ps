@@ -1,4 +1,4 @@
-prefix=/home/hwlee/tls-ps
+prefix=/home/hwlee/drive/tls-ps/tls-ps
 exec_prefix=${prefix}
 includedir=${prefix}/include
 libdir=${exec_prefix}/lib
