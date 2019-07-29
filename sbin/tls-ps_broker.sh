@@ -1,2 +1,3 @@
-export LD_LIBRARY_PATH=/home/hwlee/drive/tls-ps/tlsps-lib:/home/hwlee/drive/tls-ps/openssl/lib
+PWD=`pwd`
+export LD_LIBRARY_PATH=$PWD/../tlsps-lib:$PWD/../openssl/lib
 ./mosquitto -c ../conf/mosquitto.conf
