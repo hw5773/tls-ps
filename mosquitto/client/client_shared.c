@@ -41,6 +41,12 @@ static int mosquitto__parse_socks_url(struct mosq_config *cfg, char *url);
 #endif
 static int client_config_line_proc(struct mosq_config *cfg, int pub_or_sub, int argc, char *argv[]);
 
+unsigned long get_current_microseconds()
+{
+  struct timeval tv;
+  gettimeofday(&tv, NULL);
+  return (1000000 * (tv.tv_sec) + tv.tv_usec);
+}
 
 static int check_format(const char *str)
 {

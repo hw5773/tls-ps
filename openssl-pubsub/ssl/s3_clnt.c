@@ -191,6 +191,7 @@ IMPLEMENT_ssl3_meth_func(SSLv3_client_method,
 #endif
 int ssl3_connect(SSL *s)
 {
+  time("SSL_connect start: %lu", get_current_microseconds());
     ///// Test Code /////
     psdebug("This is the custom OpenSSL-1.0.2o library for Client\n");
     /////////////////////

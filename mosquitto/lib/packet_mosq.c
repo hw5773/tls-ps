@@ -230,7 +230,9 @@ int packet__write(struct mosquitto *mosq)
 			if(mosq->on_publish){
 				/* This is a QoS=0 message */
 				mosq->in_callback = true;
+        printf("before on_publish()\n");
 				mosq->on_publish(mosq, mosq->userdata, packet->mid);
+        printf("after on_publish()\n");
 				mosq->in_callback = false;
 			}
 			if(mosq->on_publish_v5){

@@ -4566,7 +4566,9 @@ static int ssl3_read_internal(SSL *s, void *buf, int len, int peek)
         psdebug("buf: %p", buf);
         psdebug("len: %d", len);
         if (s->role == TLSPS_ROLE_SUBSCRIBER)
+        {
           decrypt_payload(s, buf, &len);
+        }
         s->publish = 0;
       }
     }

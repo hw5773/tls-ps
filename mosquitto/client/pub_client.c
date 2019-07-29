@@ -436,6 +436,8 @@ void print_usage(void)
 
 int main(int argc, char *argv[])
 {
+  unsigned long start, end;
+  start = get_current_microseconds();
 	struct mosquitto *mosq = NULL;
 	int rc;
 
@@ -535,6 +537,8 @@ int main(int argc, char *argv[])
 	if(rc){
 		err_printf(&cfg, "Error: %s\n", mosquitto_strerror(rc));
 	}
+  end = get_current_microseconds();
+  fprintf(stderr, "Elapsed Time: %lu us\n", end - start);
 	return rc;
 
 cleanup:

@@ -53,6 +53,13 @@ int log_idx;
 #define ferr()
 #endif /* FINFO */
 
+#ifdef MEASURE
+#define time(format, ...) \
+  fprintf(stderr, "[Time] " format "\n", ## __VA_ARGS__)
+#else
+#define fstart(format, ...)
+#endif /* MEASURE */
+
 unsigned long get_current_microseconds();
 
 #endif /* __MB_LOG__ */
