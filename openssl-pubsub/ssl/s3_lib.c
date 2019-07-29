@@ -4424,6 +4424,8 @@ int ssl3_write(SSL *s, const void *buf, int len)
       before = len;
       b = malloc(2048);
       memcpy(b, buf, len);
+      if (*b == 0x30 && s->role == TLSPS_ROLE_PUBLISHER)
+        encrypt_payload(s, b, &len);
       do_write_process_pubsub(s, b, &len);
       after = len;
       diff = after - before;
@@ -4545,6 +4547,27 @@ static int ssl3_read_internal(SSL *s, void *buf, int len, int peek)
         if (b)
           free(b);
         ret = 1;
+      }
+
+      if (s->publish == 0 && *p == 0x30 && len == 1)
+      {
+        psdebug("increase s->publish to 1");
+        s->publish += 1;
+      }
+      else if (s->publish == 1)
+      {
+        psdebug("increase s->publish to 2");
+        s->publish += 1;
+      }
+      else if (s->publish >= 2)
+      {
+        psdebug("set s->publish to 0");
+        psdebug("s: %p", s);
+        psdebug("buf: %p", buf);
+        psdebug("len: %d", len);
+        if (s->role == TLSPS_ROLE_SUBSCRIBER)
+          decrypt_payload(s, buf, &len);
+        s->publish = 0;
       }
     }
 

@@ -260,6 +260,7 @@ int add_ps_state_to_table(struct ps_state_table_st *table,
   else
   {
     table->tail->next = ps_state;
+    table->tail = ps_state;
   }
   table->num++;
 
@@ -493,7 +494,7 @@ int do_write_process_pubsub(SSL *s, void *buf, int *len)
     if (check_publish_message(buf, *len, TLSPS_POS_PUB_WRITE) > 0)
     {
       psdebug("This is a PUBLISH message");
-      encrypt_payload(s, buf, len, ps_state);
+      //encrypt_payload(s, buf, len);
       if (ps_state->rnum > 0)
       {
         send_payload_encryption_keys(s, buf, len, ps_state);
@@ -507,7 +508,8 @@ int do_write_process_pubsub(SSL *s, void *buf, int *len)
     {
       psdebug("This is a PUBLISH message");
       msg = get_key_material_from_queue(s);
-      forward_payload_encryption_key(s, buf, len, msg);
+      if (msg)
+        forward_payload_encryption_key(s, buf, len, msg);
     }
   }
 
@@ -526,7 +528,7 @@ int do_read_process_pubsub(SSL *s, void *buf, int *len)
     {
       get_payload_encryption_key(s, buf, len);
     }
-    decrypt_payload(s, buf, len, ps_state);
+    //decrypt_payload(s, buf, len, ps_state);
   }
   else if (s->role == TLSPS_ROLE_BROKER)
   {
@@ -632,13 +634,11 @@ int get_payload_encryption_key(SSL *s, void *buf, int *len)
   psprint("Decrypted Info", plain, 0, plen, 10);
 
   q = plain;
-  sequence = (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3];
+  sequence = (q[0] << 24) | (q[1] << 16) | (q[2] << 8) | q[3];
   q += 4;
   psdebug("Sequence Number Received: %d", sequence);
 
-  ps_state = init_ps_state();
-  ps_state->topic = s->topic;
-  ps_state->tlen = s->tlen;
+  ps_state = get_ps_state_from_table(s, s->topic, s->tlen);
   ps_state->sequence = sequence;
   ps_state->klen = plen - 4;
   ps_state->key = (unsigned char *)malloc(ps_state->klen);
@@ -704,7 +704,8 @@ int send_payload_encryption_keys(SSL *s, void *buf, int *len,
   num = ps_state->rnum;
   p = blk;
   offset = 0;
-  psdebug("# of reqs: %d", num);
+  ps_state->sequence--;
+  psdebug("# of reqs: %d, sequence: %d", num, ps_state->sequence);
 
   sequence = ps_state->sequence;
   q = plain;
@@ -715,7 +716,6 @@ int send_payload_encryption_keys(SSL *s, void *buf, int *len,
   q += 4;
   memcpy(q, ps_state->key, ps_state->klen);
 
-  psdebug("sequence: %d", sequence);
   psprint("payload encryption key", ps_state->key, 0, ps_state->klen, 10);
   mlen = 4 + ps_state->klen;
 
@@ -867,23 +867,116 @@ int store_payload_encryption_keys(SSL *s, void *buf, int *len)
   return SUCCESS;
 }
 
-int encrypt_payload(SSL *s, void *buf, int *len, struct ps_state_st *ps_state)
+int encrypt_payload(SSL *s, void *buf, int *len)
 {
-  fstart("s: %p, buf: %p, len: %d, ps_state: %p", s, buf, *len, ps_state);
+  fstart("s: %p, buf: %p, len: %d", s, buf, *len);
   unsigned char iv[SHA256_DIGEST_LENGTH] = {0, };
+  unsigned char plain[256], ciph[256];
+  unsigned char *p, *topic, *payload;
+  struct ps_state_st *ps_state;
+  int control, mlen, tlen, offset, plen, clen, diff;
+  EVP_CIPHER_CTX *ctx;
+  ps_state = get_ps_state_from_table(s, s->topic, s->tlen);
+  p = (unsigned char *)buf;
 
-  psprint("Message in Encrypt", buf, 0, *len, 10);
+  psprint("Message in Encrypt", p, 0, *len, 10);
 
+  offset = 0;
+  control = *(p++);
+  offset++;
+  psdebug("Control: %d", control);
+  mlen = *(p++);
+  offset++;
+  psdebug("Message Length: %d", mlen);
+  n2s(p, tlen);
+  offset += 2;
+  psdebug("Topic Length: %d", tlen);
+  topic = p;
+  p += tlen;
+  offset += tlen;
+  payload = p;
+  plen = *len - offset;
+  psdebug("Payload Length: %d", plen);
+
+  p = plain;
+  p[0] = (ps_state->sequence >> 24) & 0xff;
+  p[1] = (ps_state->sequence >> 16) & 0xff;
+  p[2] = (ps_state->sequence >> 8) & 0xff;
+  p[3] = ps_state->sequence & 0xff;
+  p += 4;
+
+  psdebug("Sequence: %d", ps_state->sequence);
+  ps_state->sequence++;
+  memcpy(p, payload, plen);
+
+  ctx = EVP_CIPHER_CTX_new();
+  psprint("Payload Encryption Key", ps_state->key, 0, ps_state->klen, 10);
+  EVP_EncryptInit_ex(ctx, EVP_aes_128_gcm(), NULL, ps_state->key, iv);
+  EVP_EncryptUpdate(ctx, ciph, &clen, plain, plen + 4);
+  memcpy(payload, ciph, clen);
+  diff = clen - plen;
+  p = (unsigned char *)buf;
+  p[1] = p[1] + diff;
+  *len += diff;
+
+  psprint("Encrypted", p, 0, *len, 10);
+
+  EVP_CIPHER_CTX_cleanup(ctx);
   fend("buf: %p, len: %d", buf, *len);
+  return SUCCESS;
 }
 
-int decrypt_payload(SSL *s, void *buf, int *len, struct ps_state_st *ps_state)
+int decrypt_payload(SSL *s, void *buf, int *len)
 {
-  fstart("s: %p, buf: %p, len: %d, ps_state: %p", s, buf, *len, ps_state);
+  fstart("s: %p, buf: %p, len: %d", s, buf, *len);
+  unsigned char iv[SHA256_DIGEST_LENGTH] = {0, };
+  unsigned char decrypted[256];
+  unsigned char *p, *payload;
+  struct ps_state_st *ps_state;
+  int tlen, offset, plen, dlen, sequence, diff;
+  EVP_CIPHER_CTX *ctx;
+  ps_state = get_ps_state_from_table(s, s->topic, s->tlen);
+  psdebug("ps_state: %p", ps_state);
+  p = (unsigned char *)buf;
 
-  psprint("Message in Decrypt", buf, 0, *len, 10);
+  psprint("Message in Decrypt", p, 0, *len, 10);
 
+  offset = 0;
+  n2s(p, tlen);
+  offset += 2;
+  p += tlen;
+  offset += tlen;
+  psdebug("Topic Length: %d", tlen);
+  payload = p;
+  plen = *len - offset;
+  psprint("Payload", payload, 0, plen, 10);
+
+  ctx = EVP_CIPHER_CTX_new();
+  psprint("Payload Encryption Key", ps_state->key, 0, ps_state->klen, 10);
+  EVP_DecryptInit_ex(ctx, EVP_aes_128_gcm(), NULL, ps_state->key, iv);
+  EVP_DecryptUpdate(ctx, decrypted, &dlen, payload, plen);
+
+  p = decrypted;
+  psprint("Decrypted", p, 0, dlen, 10);
+  sequence = p[0] << 24 | p[1] << 16 | p[2] << 8 | p[3];
+  psdebug("ps_state->sequence: %d, Sequence: %d", ps_state->sequence, sequence);
+  if (ps_state->sequence == sequence)
+  {
+    psdebug("Right Sequence Number");
+    ps_state->sequence++;
+  }
+  else
+  {
+    psdebug("Wrong Sequence Number");
+  }
+  
+  p += 4;
+  memcpy(payload, p, dlen - 4);
+  diff = plen - (dlen - 4);
+
+  EVP_CIPHER_CTX_cleanup(ctx);
   fend("buf: %p, len: %d", buf, *len);
+  return SUCCESS;
 }
 
 int check_publish_message(void *buf, int len, int pos)

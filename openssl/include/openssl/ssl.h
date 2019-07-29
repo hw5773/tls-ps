@@ -1700,6 +1700,7 @@ struct ssl_st {
     unsigned char *key;
     int klen;
     int mq_sent;
+    int publish;
 # endif /* OPENSSL_NO_TLSPS */
 
 #  ifndef OPENSSL_NO_SRP

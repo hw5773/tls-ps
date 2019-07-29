@@ -49,7 +49,7 @@ int log_idx;
   fprintf(stderr, "[tls-ps] Error: %s:%s:%d\n", __FILE__, __func__, __LINE__)
 #else
 #define fstart(format, ...)
-#define fend()
+#define fend(format, ...)
 #define ferr()
 #endif /* FINFO */
 

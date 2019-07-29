@@ -82,8 +82,8 @@ int forward_payload_encryption_key(SSL *s, void *buf, int *len,
     struct message_st *msg);
 int store_payload_encryption_keys(SSL *s, void *buf, int *len);
 
-int encrypt_payload(SSL *s, void *buf, int *len, struct ps_state_st *ps_state);
-int decrypt_payload(SSL *s, void *buf, int *len, struct ps_state_st *ps_state);
+int encrypt_payload(SSL *s, void *buf, int *len);
+int decrypt_payload(SSL *s, void *buf, int *len);
 
 int make_signature_block(unsigned char **sigblk, unsigned char *msg, int mlen, 
     EVP_PKEY *priv, int nid, int *slen);

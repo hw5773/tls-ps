@@ -413,6 +413,7 @@ SSL *SSL_new(SSL_CTX *ctx)
     s->tlen = 0;
     s->key = NULL;
     s->klen = 0;
+    s->publish = 0;
 # endif /* OPENSSL_NO_TLSPS */
 
     if (s->ctx->alpn_client_proto_list) {
