@@ -1106,6 +1106,7 @@ struct ssl_ctx_st {
     struct message_queue_st *queue;
     // pubsub state table
     struct ps_state_table_st *table;
+    X509 *x509;
 # endif /* OPENSSL_NO_TLSPS */
 
 #  endif

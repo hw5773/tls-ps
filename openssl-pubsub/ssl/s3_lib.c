@@ -4422,7 +4422,7 @@ int ssl3_write(SSL *s, const void *buf, int len)
     {
       psprint("Message", p, 0, len, 10);
       before = len;
-      b = malloc(1024);
+      b = malloc(2048);
       memcpy(b, buf, len);
       do_write_process_pubsub(s, b, &len);
       after = len;
@@ -4531,7 +4531,7 @@ static int ssl3_read_internal(SSL *s, void *buf, int len, int peek)
       if (*p == 0xff)
       {
         psdebug("Special message!");
-        b = (unsigned char *)malloc(1024);
+        b = (unsigned char *)malloc(2048);
         q = b;
         r = s->method->ssl_read_bytes(s, SSL3_RT_APPLICATION_DATA, q, 2, peek);
         n2s(q, mlen);

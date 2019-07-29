@@ -3,6 +3,7 @@
 
 #include <openssl/ssl.h>
 #include <openssl/queue.h>
+#include <openssl/evp.h>
 #define STATE_FILE "state"
 #define MAX_PAYLOAD_ENC_KEY_LEN 32
 
@@ -83,4 +84,9 @@ int store_payload_encryption_keys(SSL *s, void *buf, int *len);
 
 int encrypt_payload(SSL *s, void *buf, int *len, struct ps_state_st *ps_state);
 int decrypt_payload(SSL *s, void *buf, int *len, struct ps_state_st *ps_state);
+
+int make_signature_block(unsigned char **sigblk, unsigned char *msg, int mlen, 
+    EVP_PKEY *priv, int nid, int *slen);
+int verify_signature(unsigned char *msg, int msg_len, int sig_type, 
+    int sig_len, unsigned char *sig, EVP_PKEY *pub);
 #endif /* __PUBSUB_H__ */

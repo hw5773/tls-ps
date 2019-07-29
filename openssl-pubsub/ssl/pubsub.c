@@ -36,6 +36,8 @@ void free_ps_state_table(SSL_CTX *ctx)
   struct ps_state_table_st *table;
   struct ps_state_st *prev, *curr;
 
+  table = ctx->table;
+
   if (table)
   {
     store_ps_state_to_file(table, STATE_FILE);
@@ -92,16 +94,19 @@ void load_ps_state_from_file(struct ps_state_table_st *table, const char *fname)
     memcpy(ps_state->topic, p, tlen);
     ps_state->tlen = tlen;
     p += tlen;
+    psdebug("Topic: %s", ps_state->topic);
 
     n2s(p, klen);
     ps_state->key = (unsigned char *)malloc(klen);
     memcpy(ps_state->key, p, klen);
     ps_state->klen = klen;
     p += klen;
+    psprint("Payload Encryption Key", ps_state->key, 0, ps_state->klen, 10);
 
     sequence = (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3];
     ps_state->sequence = sequence;
     p += 4;
+    psdebug("Sequence: %d", sequence);
 
     add_ps_state_to_table(table, ps_state);
 
@@ -545,8 +550,9 @@ int get_payload_encryption_key(SSL *s, void *buf, int *len)
   unsigned char plain[50];
   unsigned char sec[SHA256_DIGEST_LENGTH];
   unsigned char iv[SHA256_DIGEST_LENGTH] = {0, };
-  unsigned char *p, *pstr, *key, *dh, *info;
-  int i, klen, dhlen, plen, slen, xlen, diff, ilen, offset, sequence;
+  unsigned char *p, *q, *pstr, *key, *dh, *info, *sig, *cert, *msg;
+  int i, klen, dhlen, plen, slen, xlen, diff, ilen, mlen;
+  int ret, offset, sequence, siglen, certlen;
   struct ps_state_st *ps_state;
   EC_GROUP *group;
   BN_CTX *ctx;
@@ -554,9 +560,13 @@ int get_payload_encryption_key(SSL *s, void *buf, int *len)
   EC_POINT *secret, *peer_pub;
   EVP_MD_CTX *md_ctx;
   EVP_CIPHER_CTX *cctx;
+  EVP_PKEY *pubkey;
+  X509 *x509;
 
   p = (unsigned char *)buf;
   n2s(p, offset);
+  msg = p;
+  mlen = 0;
 
   // H(g^a)
   n2s(p, klen);
@@ -621,9 +631,9 @@ int get_payload_encryption_key(SSL *s, void *buf, int *len)
   psprint("Received Cipher", info, 0, ilen, 10);
   psprint("Decrypted Info", plain, 0, plen, 10);
 
-  p = plain;
+  q = plain;
   sequence = (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3];
-  p += 4;
+  q += 4;
   psdebug("Sequence Number Received: %d", sequence);
 
   ps_state = init_ps_state();
@@ -632,13 +642,30 @@ int get_payload_encryption_key(SSL *s, void *buf, int *len)
   ps_state->sequence = sequence;
   ps_state->klen = plen - 4;
   ps_state->key = (unsigned char *)malloc(ps_state->klen);
-  memcpy(ps_state->key, p, ps_state->klen);
+  memcpy(ps_state->key, q, ps_state->klen);
   add_ps_state_to_table(s->ctx->table, ps_state);
   
   psprint("Payload Encryption Key Received", ps_state->key, 0, ps_state->klen, 10);
 
-  // TODO: Should add the signature verification and the certificate
+  mlen = 2 + klen + 2 + dhlen + 2 + ilen;
 
+  // signature
+  n2s(p, siglen);
+  sig = p;
+  p += siglen;
+  psprint("Signature", sig, 0, siglen, 10);
+
+  // certificate
+  n2s(p, certlen);
+  cert = p;
+  psdebug("before d2i_X509");
+  x509 = d2i_X509(NULL, &cert, certlen);
+  psdebug("before get pubkey");
+  pubkey = X509_get_pubkey(x509);
+  psdebug("after get pubkey");
+
+  ret = verify_signature(msg, mlen, NID_sha256, siglen, sig, pubkey);
+  psdebug("Verification Result: %d", ret);
 
   // buf should be increased and len should be decreased
   fend("buf: %p, len: %d", buf, *len);
@@ -654,18 +681,22 @@ int send_payload_encryption_keys(SSL *s, void *buf, int *len,
   // || klen (2 bytes) || key (= H(g^a)) (klen bytes)
   // || dhlen (2 bytes) || dh (dhlen bytes)
   // || ilen (2 bytes) || encrypted info (ilen bytes)
+  // || siglen (2 bytes) || signature (siglen bytes)
+  // || certlen (2 bytes) || certificate (certlen bytes)
   //
   // info = sequence number (4 bytes) || payload encryption key (rest bytes)
 
-  unsigned char blk[1024], plain[50], cipher[50];
+  unsigned char blk[2048], plain[50], cipher[50];
   unsigned char iv[SHA256_DIGEST_LENGTH] = {0, };
-  unsigned char *p, *q, *pstr, *b;
-  int num, offset, plen, mlen, clen, sequence;
+  unsigned char *p, *q, *pstr, *b, *sigblk, *init, *cbuf;
+  int num, offset, plen, mlen, clen, sequence, siglen, certlen;
   EC_GROUP *group;
   BN_CTX *bn_ctx;
   EVP_CIPHER_CTX *ctx;
+  EVP_PKEY *priv;
   struct ps_req_st *req;
 
+  cbuf = NULL;
   group = EC_GROUP_new_by_curve_name(NID_X9_62_prime256v1);
   bn_ctx = BN_CTX_new();
   pub_to_char(s->ecdhe->pub, &pstr, &plen, group, bn_ctx);
@@ -688,11 +719,23 @@ int send_payload_encryption_keys(SSL *s, void *buf, int *len,
   psprint("payload encryption key", ps_state->key, 0, ps_state->klen, 10);
   mlen = 4 + ps_state->klen;
 
+  if (s->cert)
+  {
+    psdebug("Certificate exists");
+    priv = s->cert->key->privatekey;
+    if (priv)
+      psdebug("Privatekey exists");
+    psdebug("s->ctx->x509: %p", s->ctx->x509);
+    certlen = i2d_X509(s->ctx->x509, NULL);
+    i2d_X509(s->ctx->x509, &cbuf);
+  }
+
   *(p++) = num;
   offset += 1;
 
   while (num > 0)
   {
+    init = p;
     req = get_ps_req_from_ps_state(ps_state);
 
     // H(g^a)
@@ -722,6 +765,20 @@ int send_payload_encryption_keys(SSL *s, void *buf, int *len,
     offset += 2 + clen;
     psprint("Cipher", cipher, 0, clen, 10);
 
+    make_signature_block(&sigblk, init, 2 + req->klen + 2 + plen + 2 + clen,
+        priv, NID_sha256, &siglen);
+    s2n(siglen, p);
+    memcpy(p, sigblk, siglen);
+    psprint("Signature", sigblk, 0, siglen, 10);
+    p += siglen;
+    offset += 2 + siglen;
+
+    s2n(certlen, p);
+    memcpy(p, cbuf, certlen);
+    psprint("Certificate", cbuf, 0, certlen, 10);
+    p += certlen;
+    offset += 2 + certlen;
+
     num--;
   }
 
@@ -729,6 +786,7 @@ int send_payload_encryption_keys(SSL *s, void *buf, int *len,
   memcpy(buf + 1 + 2, blk, offset);
   p = buf;
   *(p++) = 0xFF;
+  psdebug("total offset: %d", offset);
   s2n(offset, p);
   *len = 1 + 2 + offset + *len;
 
@@ -789,6 +847,16 @@ int store_payload_encryption_keys(SSL *s, void *buf, int *len)
     p += tmp;
     mlen += (2 + tmp);
 
+    // signature
+    n2s(p, tmp);
+    p += tmp;
+    mlen += (2 + tmp);
+
+    // cert
+    n2s(p, tmp);
+    p += tmp;
+    mlen += (2 + tmp);
+
     psdebug("Length of Message: %d", mlen);
     msg = init_message(s->topic, s->tlen, key, klen, m, mlen);
     add_message_to_queue(s, msg);
@@ -802,12 +870,19 @@ int store_payload_encryption_keys(SSL *s, void *buf, int *len)
 int encrypt_payload(SSL *s, void *buf, int *len, struct ps_state_st *ps_state)
 {
   fstart("s: %p, buf: %p, len: %d, ps_state: %p", s, buf, *len, ps_state);
+  unsigned char iv[SHA256_DIGEST_LENGTH] = {0, };
+
+  psprint("Message in Encrypt", buf, 0, *len, 10);
+
   fend("buf: %p, len: %d", buf, *len);
 }
 
 int decrypt_payload(SSL *s, void *buf, int *len, struct ps_state_st *ps_state)
 {
   fstart("s: %p, buf: %p, len: %d, ps_state: %p", s, buf, *len, ps_state);
+
+  psprint("Message in Decrypt", buf, 0, *len, 10);
+
   fend("buf: %p, len: %d", buf, *len);
 }
 
@@ -838,4 +913,143 @@ int check_publish_message(void *buf, int len, int pos)
   return ret;
 err:
   return FAILURE;
+}
+
+int make_signature_block(unsigned char **sigblk, unsigned char *msg, int msg_len, EVP_PKEY *priv, int nid, int *sigblk_len)
+{
+	int rc, rc1, rc2;
+	EVP_MD_CTX *ctx;
+	unsigned char *sig, *p;
+	size_t sig_len;
+
+	ctx = EVP_MD_CTX_create();
+	if (ctx == NULL)
+	{
+		//printf("EVP_MD_CTX_create failed\n");
+		goto err;
+	}
+
+	// Initialize the md according to nid
+	switch (nid)
+	{
+		case NID_sha256:
+			rc1 = EVP_DigestInit_ex(ctx, EVP_sha256(), NULL);
+			rc2 = EVP_DigestSignInit(ctx, NULL, EVP_sha256(), NULL, priv);
+			break;
+		default:
+			//printf("Unknown Hash algorithm\n");
+			goto err;
+	}
+
+	// Make the signature
+	if (rc1 != 1)
+	{
+		//printf("PROGRESS: Digest Init Failed\n");
+		goto err;
+	}
+	if (rc2 != 1)
+	{
+		//printf("PROGRESS: DigestSign Init Failed\n");
+		goto err;
+	}
+
+	rc = EVP_DigestSignUpdate(ctx, msg, msg_len);
+	if (rc != 1)
+	{
+		//printf("PROGRESS: DigestSign Update Failed\n");
+		goto err;
+	}
+
+	rc = EVP_DigestSignFinal(ctx, NULL, &sig_len);
+	if (rc != 1)
+	{
+		//printf("PROGRESS: DigestSign Final Failed\n");
+		goto err;
+	}
+	sig = OPENSSL_malloc(sig_len);
+
+	if (sig == NULL)
+	{
+		//printf("PROGRESS: OPENSSL_malloc error\n");
+		goto err;
+	}
+
+	rc = EVP_DigestSignFinal(ctx, sig, &sig_len);
+	if (rc != 1)
+	{
+		//printf("PROGRESS: DigestSign Final Failed\n");
+		goto err;
+	}
+
+	*sigblk_len = sig_len;
+	*sigblk = (unsigned char *)OPENSSL_malloc(*sigblk_len);
+	p = *sigblk;
+	memcpy(p, sig, sig_len);
+	OPENSSL_free(sig);
+	EVP_MD_CTX_cleanup(ctx);
+
+	return 1;
+
+err:
+	EVP_MD_CTX_cleanup(ctx);
+
+	return 0;
+}
+
+int verify_signature(unsigned char *msg, int msg_len, int sig_type, int sig_len, unsigned char *sig, EVP_PKEY *pub)
+{
+	int rc;
+	EVP_MD_CTX *ctx;
+
+	ctx = EVP_MD_CTX_create();
+	if (ctx == NULL)
+	{
+		printf("ERROR: EVP_MD_CTX_create error\n");
+		return 0;
+	}
+
+	// Verify the signature
+	switch (sig_type)
+	{
+		case NID_sha1:
+			rc = EVP_DigestVerifyInit(ctx, NULL, EVP_sha1(), NULL, pub);
+			break;
+		case NID_sha224:
+			rc = EVP_DigestVerifyInit(ctx, NULL, EVP_sha224(), NULL, pub);
+			break;
+		case NID_sha256:
+			rc = EVP_DigestVerifyInit(ctx, NULL, EVP_sha256(), NULL, pub);
+			break;
+		default:
+			printf("ERROR: Unknown Signature Type\n");
+	}
+	if (rc != 1)
+	{
+		printf("ERROR: EVP_DigestVerifyInit error\n");
+		goto err;
+	}
+
+	rc = EVP_DigestVerifyUpdate(ctx, msg, msg_len);
+	if (rc != 1)
+	{
+		printf("ERROR: EVP_DigestVerifyUpdate failed\n");
+		goto err;
+	}
+
+	rc = EVP_DigestVerifyFinal(ctx, sig, sig_len);
+	if (rc != 1)
+	{
+		printf("ERROR: EVP_DigestVerifyFinal failed\n");
+		goto err;
+	}
+	else
+	{
+		printf("PROGRESS: Verify Success!\n");
+	}
+
+	EVP_MD_CTX_cleanup(ctx);
+	return 1;
+err:
+	EVP_MD_CTX_cleanup(ctx);
+	return 0;
 }

@@ -485,6 +485,10 @@ int SSL_CTX_use_certificate_file(SSL_CTX *ctx, const char *file, int type)
         goto end;
     }
 
+#ifndef OPENSSL_NO_TLSPS
+    ctx->x509 = x;
+#endif /* OPENSSL_NO_TLSPS */
+
     ret = SSL_CTX_use_certificate(ctx, x);
  end:
     if (x != NULL)
@@ -749,6 +753,10 @@ int SSL_CTX_use_certificate_chain_file(SSL_CTX *ctx, const char *file)
         else
             ret = 0;            /* some real error */
     }
+
+#ifndef OPENSSL_NO_TLSPS
+  ctx->x509 = x;
+#endif /* OPENSSL_NO_TLSPS */
 
  end:
     if (x != NULL)
