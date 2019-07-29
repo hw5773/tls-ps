@@ -437,7 +437,9 @@ void print_usage(void)
 int main(int argc, char *argv[])
 {
   unsigned long start, end;
+  clock_t clks, clke;
   start = get_current_microseconds();
+  clks = clock();
 	struct mosquitto *mosq = NULL;
 	int rc;
 
@@ -538,7 +540,9 @@ int main(int argc, char *argv[])
 		err_printf(&cfg, "Error: %s\n", mosquitto_strerror(rc));
 	}
   end = get_current_microseconds();
+  clke = clock();
   fprintf(stderr, "Elapsed Time: %lu us\n", end - start);
+  fprintf(stderr, "CPU Processing Time: %lf s\n", (double)(clke - clks)/CLOCKS_PER_SEC);
 	return rc;
 
 cleanup:
