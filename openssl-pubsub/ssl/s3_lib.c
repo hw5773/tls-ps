@@ -4415,12 +4415,19 @@ int ssl3_write(SSL *s, const void *buf, int len)
         ssl3_renegotiate_check(s);
 
 #ifndef OPENSSL_NO_TLSPS
-    unsigned char *p;
+    unsigned char *p, *b;
+    int before, after, diff;
     p = buf;
     if (s->pubsub)
     {
       psprint("Message", p, 0, len, 10);
-      do_write_process_pubsub(s, buf, &len);
+      before = len;
+      b = malloc(1024);
+      memcpy(b, buf, len);
+      do_write_process_pubsub(s, b, &len);
+      after = len;
+      diff = after - before;
+      p = b;
       psprint("Changed Message", p, 0, len, 10);
     }
 #endif /* OPENSSL_NO_TLSPS */
@@ -4434,7 +4441,14 @@ int ssl3_write(SSL *s, const void *buf, int len)
     if ((s->s3->flags & SSL3_FLAGS_POP_BUFFER) && (s->wbio == s->bbio)) {
         /* First time through, we write into the buffer */
         if (s->s3->delay_buf_pop_ret == 0) {
-            ret = ssl3_write_bytes(s, SSL3_RT_APPLICATION_DATA, buf, len);
+            if (s->pubsub)
+            {
+              ret = ssl3_write_bytes(s, SSL3_RT_APPLICATION_DATA, b, len);
+            }
+            else
+            {
+              ret = ssl3_write_bytes(s, SSL3_RT_APPLICATION_DATA, buf, len);
+            }
             if (ret <= 0)
                 return (ret);
 
@@ -4454,12 +4468,28 @@ int ssl3_write(SSL *s, const void *buf, int len)
         ret = s->s3->delay_buf_pop_ret;
         s->s3->delay_buf_pop_ret = 0;
     } else {
-        ret = s->method->ssl_write_bytes(s, SSL3_RT_APPLICATION_DATA,
-                                         buf, len);
+        if (s->pubsub)
+        {
+          ret = s->method->ssl_write_bytes(s, SSL3_RT_APPLICATION_DATA,
+                                           b, len);
+        }
+        else
+        {
+          ret = s->method->ssl_write_bytes(s, SSL3_RT_APPLICATION_DATA,
+                                           buf, len);
+        }
+
         if (ret <= 0)
             return (ret);
     }
 
+    if (ret < diff)
+      ret = 0;
+    else
+      ret = ret - diff;
+
+    if (s->pubsub)
+      free(b);
     return (ret);
 }
 
@@ -4492,7 +4522,30 @@ static int ssl3_read_internal(SSL *s, void *buf, int len, int peek)
 
     if (s->pubsub)
     {
-      do_read_process_pubsub(s, buf, &len);
+      unsigned char *p, *b, *q;
+      int r, mlen;
+      p = buf;
+      psprint("Message", p, 0, len, 10);
+      b = NULL;
+
+      if (*p == 0xff)
+      {
+        psdebug("Special message!");
+        b = (unsigned char *)malloc(1024);
+        q = b;
+        r = s->method->ssl_read_bytes(s, SSL3_RT_APPLICATION_DATA, q, 2, peek);
+        n2s(q, mlen);
+        psdebug("read: %d, bytes to be read: %d bytes", r, mlen);
+        r = s->method->ssl_read_bytes(s, SSL3_RT_APPLICATION_DATA, q, mlen, peek);
+        psprint("Read", b, 0, mlen + 2, 10);
+        r = 2 + mlen;
+        do_read_process_pubsub(s, b, &r);
+        ret = s->method->ssl_read_bytes(s, SSL3_RT_APPLICATION_DATA, buf, len, peek);
+        psprint("Changed Message", p, 0, len, 10);
+        if (b)
+          free(b);
+        ret = 1;
+      }
     }
 
     return (ret);

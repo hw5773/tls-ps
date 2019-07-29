@@ -517,23 +517,15 @@ int do_read_process_pubsub(SSL *s, void *buf, int *len)
 
   if (s->role == TLSPS_ROLE_SUBSCRIBER)
   {
-    if (check_publish_message(buf, *len, TLSPS_POS_SUB_READ) > 0)
+    if (ps_state->klen == 0)
     {
-      psdebug("This is a PUBLISH message");
-      if (ps_state->klen == 0)
-      {
-        get_payload_encryption_key(s, buf, len);
-      }
-      decrypt_payload(s, buf, len, ps_state);
+      get_payload_encryption_key(s, buf, len);
     }
+    decrypt_payload(s, buf, len, ps_state);
   }
   else if (s->role == TLSPS_ROLE_BROKER)
   {
-    if (check_publish_message(buf, *len, TLSPS_POS_BROKER_READ) > 0)
-    {
-      psdebug("This is a PUBLISH message");
-      store_payload_encryption_keys(s, buf, len);
-    }
+    store_payload_encryption_keys(s, buf, len);
   }
 
   fend("s: %p, buf: %p, len: %d", s, buf, *len);
@@ -643,12 +635,10 @@ int get_payload_encryption_key(SSL *s, void *buf, int *len)
   memcpy(ps_state->key, p, ps_state->klen);
   add_ps_state_to_table(s->ctx->table, ps_state);
   
-  psdebug("Payload Encryption Key Received", ps_state->key, 0, ps_state->klen, 10);
+  psprint("Payload Encryption Key Received", ps_state->key, 0, ps_state->klen, 10);
 
   // TODO: Should add the signature verification and the certificate
 
-  *len -= (offset + 2);
-  memmove(buf, p, *len);
 
   // buf should be increased and len should be decreased
   fend("buf: %p, len: %d", buf, *len);
@@ -669,7 +659,7 @@ int send_payload_encryption_keys(SSL *s, void *buf, int *len,
 
   unsigned char blk[1024], plain[50], cipher[50];
   unsigned char iv[SHA256_DIGEST_LENGTH] = {0, };
-  unsigned char *p, *q, *pstr;
+  unsigned char *p, *q, *pstr, *b;
   int num, offset, plen, mlen, clen, sequence;
   EC_GROUP *group;
   BN_CTX *bn_ctx;
@@ -735,11 +725,12 @@ int send_payload_encryption_keys(SSL *s, void *buf, int *len,
     num--;
   }
 
-  memmove(buf + offset + 2, buf, *len);
-  memcpy(buf + 2, blk, offset);
+  memmove(buf + 1 + 2 + offset, buf, *len);
+  memcpy(buf + 1 + 2, blk, offset);
   p = buf;
+  *(p++) = 0xFF;
   s2n(offset, p);
-  *len = *len + offset + 2;
+  *len = 1 + 2 + offset + *len;
 
   // buf should be same and len should be increased
   fend("buf: %p, len: %d", buf, *len);
@@ -750,15 +741,15 @@ int forward_payload_encryption_key(SSL *s, void *buf, int *len, struct message_s
 {
   fstart("s: %p, buf: %p, len: %d, msg: %p", s, buf, *len, msg);
   int offset;
-  unsigned char blk[256];
   unsigned char *p;
 
-  memmove(buf + msg->mlen + 2, buf, *len);
-  memcpy(buf + 2, msg->msg, msg->mlen);
+  memmove(buf + 1 + 2 + msg->mlen, buf, *len);
+  memcpy(buf + 1 + 2, msg->msg, msg->mlen);
   p = buf;
+  *(p++) = 0xFF;
   s2n(msg->mlen, p);
 
-  *len += msg->mlen + 2;
+  *len += 1 + 2 + msg->mlen;
 
   fend();
   return SUCCESS;
@@ -832,7 +823,7 @@ int check_publish_message(void *buf, int len, int pos)
     n2s(p, offset);
     if (offset > len) goto err;
     p += offset;
-    psdebug("Offset: %d", offset);
+    psdebug("offset: %d", offset);
   }
 
   if ((*p) == 0x30)

@@ -123,7 +123,7 @@ void free_message(struct message_st *msg)
 
 void add_message_to_queue(SSL *s, struct message_st *msg)
 {
-  fstart("s: %p, msg: %p");
+  fstart("s: %p, msg: %p", s, msg);
   struct message_queue_st *queue;
   queue = s->ctx->queue;
   if (!(queue->head))
