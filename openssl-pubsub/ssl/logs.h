@@ -43,8 +43,8 @@ int log_idx;
 #ifdef FINFO
 #define fstart(format, ...) \
   fprintf(stderr, "[tls-ps] Start: %s:%s : " format "\n", __FILE__, __func__, ## __VA_ARGS__)
-#define fend() \
-  fprintf(stderr, "[tls-ps] End: %s:%s\n", __FILE__, __func__)
+#define fend(format, ...) \
+  fprintf(stderr, "[tls-ps] End: %s:%s : " format "\n", __FILE__, __func__, ## __VA_ARGS__)
 #define ferr() \
   fprintf(stderr, "[tls-ps] Error: %s:%s:%d\n", __FILE__, __func__, __LINE__)
 #else

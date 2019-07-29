@@ -4416,14 +4416,12 @@ int ssl3_write(SSL *s, const void *buf, int len)
 
 #ifndef OPENSSL_NO_TLSPS
     unsigned char *p;
-    p= buf;
-    psdebug("TLS-PS enabled? %d", s->pubsub);
+    p = buf;
     if (s->pubsub)
     {
       psprint("Message", p, 0, len, 10);
-      psdebug("Check whether the key is established");
-      psdebug("If not, we execute the TLS-PS handshake");
-      do_process_pubsub(s, buf, &len);
+      do_write_process_pubsub(s, buf, &len);
+      psprint("Changed Message", p, 0, len, 10);
     }
 #endif /* OPENSSL_NO_TLSPS */
 
@@ -4494,7 +4492,7 @@ static int ssl3_read_internal(SSL *s, void *buf, int len, int peek)
 
     if (s->pubsub)
     {
-      do_process_pubsub(s, buf, &len);
+      do_read_process_pubsub(s, buf, &len);
     }
 
     return (ret);

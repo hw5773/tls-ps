@@ -159,6 +159,9 @@
 #ifndef OPENSSL_NO_ENGINE
 # include <openssl/engine.h>
 #endif
+#ifndef OPENSSL_NO_TLSPS
+# include "logs.h"
+#endif /* OPENSSL_NO_TLSPS */
 
 const char *SSL_version_str = OPENSSL_VERSION_TEXT;
 
@@ -403,6 +406,13 @@ SSL *SSL_new(SSL_CTX *ctx)
     {
       s->ps_state = init_ps_state();
     }
+
+    s->role = TLSPS_ROLE_BROKER;
+    s->peer_role = TLSPS_ROLE_BROKER;
+    s->topic = NULL;
+    s->tlen = 0;
+    s->key = NULL;
+    s->klen = 0;
 # endif /* OPENSSL_NO_TLSPS */
 
     if (s->ctx->alpn_client_proto_list) {
@@ -676,7 +686,19 @@ void SSL_free(SSL *s)
 #endif
 
 #ifndef OPENSSL_NO_TLSPS
-    free_ps_state(s);
+    if (s->key)
+    {
+      free(s->key);
+    }
+    s->key = NULL;
+    s->klen = 0;
+
+    if (s->topic)
+    {
+      free(s->topic);
+    }
+    s->topic = NULL;
+    s->tlen = 0;
 #endif /* OPENSSL_NO_TLSPS */
 
     OPENSSL_free(s);
@@ -2036,6 +2058,7 @@ SSL_CTX *SSL_CTX_new(const SSL_METHOD *meth)
 #ifndef OPENSSL_NO_TLSPS
     ret->pubsub = 1;
     init_message_queue(ret);
+    ret->table = init_ps_state_table();
 #endif /* OPENSSL_NO_TLSPS */
 #endif
 #ifndef OPENSSL_NO_PSK
@@ -2215,6 +2238,7 @@ void SSL_CTX_free(SSL_CTX *a)
         OPENSSL_free(a->alpn_client_proto_list);
 #ifndef OPENSSL_NO_TLSPS
     free_message_queue(a);
+    free_ps_state_table(a);
 #endif /* OPENSSL_NO_TLSPS */
 #endif
 
@@ -3594,6 +3618,31 @@ int SSL_is_server(SSL *s)
 {
     return s->server;
 }
+
+#ifndef OPENSSL_NO_TLSPS
+void SSL_set_topic(SSL *ssl, unsigned char *topic, int tlen)
+{
+  fstart("ssl: %p, topic: %p, tlen: %d", ssl, topic, tlen);
+  ssl->topic = (unsigned char *)malloc(tlen);
+  memcpy(ssl->topic, topic, tlen);
+  ssl->tlen = tlen;
+  psdebug("Set Topic to %s (%d bytes)", ssl->topic, ssl->tlen);
+  fend();
+}
+
+void SSL_set_role(SSL *ssl, int role)
+{
+  fstart("ssl: %p, role: %d", ssl, role);
+  ssl->role = role;
+  if (role == TLSPS_ROLE_PUBLISHER)
+    psdebug("Set Role to Publisher");
+  else if (role == TLSPS_ROLE_SUBSCRIBER)
+    psdebug("Set Role to Subscriber");
+  else
+    psdebug("Error: Unknown Role");
+  fend();
+}
+#endif /* OPENSSL_NO_TLSPS */
 
 #if defined(_WINDLL) && defined(OPENSSL_SYS_WIN16)
 # include "../crypto/bio/bss_file.c"

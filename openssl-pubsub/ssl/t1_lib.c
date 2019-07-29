@@ -1408,7 +1408,9 @@ unsigned char *ssl_add_clienthello_tlsext(SSL *s, unsigned char *buf,
     /* Add RI if renegotiating */
     if (s->pubsub) {
         int el;
+        unsigned char *tmp;
 
+        /*
         if (!ssl_add_clienthello_pubsub_ext(s, 0, &el, 0)) {
             SSLerr(SSL_F_SSL_ADD_CLIENTHELLO_TLSEXT, ERR_R_INTERNAL_ERROR);
             return NULL;
@@ -1416,15 +1418,19 @@ unsigned char *ssl_add_clienthello_tlsext(SSL *s, unsigned char *buf,
 
         if ((limit - ret - 4 - el) < 0)
             return NULL;
+        */
 
         s2n(TLSEXT_TYPE_pubsub, ret);
-        s2n(el, ret);
+        tmp = ret + 2;
+        //s2n(el, ret);
 
-        if (!ssl_add_clienthello_pubsub_ext(s, ret, &el, el)) {
+        if (!ssl_add_clienthello_pubsub_ext(s, tmp, &el, el)) {
             SSLerr(SSL_F_SSL_ADD_CLIENTHELLO_TLSEXT, ERR_R_INTERNAL_ERROR);
             return NULL;
         }
 
+        if ((limit - ret - 4 - el) < 0) return NULL;
+        s2n(el, ret);
         ret += el;
     }
 # endif /* OPENSSL_NO_TLSPS */
@@ -1753,6 +1759,9 @@ unsigned char *ssl_add_serverhello_tlsext(SSL *s, unsigned char *buf,
     if (s->pubsub)
     {
       int el;
+      unsigned char *tmp;
+
+      /*
       if (!ssl_add_serverhello_pubsub_ext(s, 0, &el, 0))
       {
         SSLerr(SSL_F_SSL_ADD_SERVERHELLO_TLSEXT, ERR_R_INTERNAL_ERROR);
@@ -1761,16 +1770,20 @@ unsigned char *ssl_add_serverhello_tlsext(SSL *s, unsigned char *buf,
 
       if (CHECKLEN(ret, 4 + el, limit))
         return NULL;
+      */
 
       s2n(TLSEXT_TYPE_pubsub, ret);
-      s2n(el, ret);
+      tmp = ret + 2;
+      //s2n(el, ret);
 
-      if (!ssl_add_serverhello_pubsub_ext(s, ret, &el, el))
+      if (!ssl_add_serverhello_pubsub_ext(s, tmp, &el, el))
       {
         SSLerr(SSL_F_SSL_ADD_SERVERHELLO_TLSEXT, ERR_R_INTERNAL_ERROR);
         return NULL;
       }
 
+      if ((limit - ret - 4 - el) < 0) return NULL;
+      s2n(el, ret);
       ret += el;
     }
 #endif /* OPENSSL_NO_TLSPS */
