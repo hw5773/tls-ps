@@ -54,10 +54,10 @@ int log_idx;
 #endif /* FINFO */
 
 #ifdef MEASURE
-#define time(format, ...) \
+#define mtime(format, ...) \
   fprintf(stderr, "[Time] " format "\n", ## __VA_ARGS__)
 #else
-#define fstart(format, ...)
+#define mtime(format, ...)
 #endif /* MEASURE */
 
 unsigned long get_current_microseconds();
