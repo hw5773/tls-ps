@@ -498,8 +498,8 @@ int net__socket_connect_tls(struct mosquitto *mosq)
 	}
 
 ///// Add for TLS-PS /////
-  SSL_set_topic(mosq->ssl, mosq->topic, mosq->tlen);
-  SSL_set_role(mosq->ssl, mosq->role);
+  //SSL_set_topic(mosq->ssl, mosq->topic, mosq->tlen);
+  //SSL_set_role(mosq->ssl, mosq->role);
 //////////////////////////
 
 	ret = SSL_connect(mosq->ssl);
