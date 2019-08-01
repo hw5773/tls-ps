@@ -686,7 +686,7 @@ int send_payload_encryption_keys(SSL *s, void *buf, int *len,
   //
   // info = sequence number (4 bytes) || payload encryption key (rest bytes)
 
-  unsigned char blk[2048], plain[50], cipher[50];
+  unsigned char blk[16384], plain[50], cipher[50];
   unsigned char iv[SHA256_DIGEST_LENGTH] = {0, };
   unsigned char *p, *q, *pstr, *b, *sigblk, *init, *cbuf;
   int num, offset, plen, mlen, clen, sequence, siglen, certlen;
@@ -780,15 +780,23 @@ int send_payload_encryption_keys(SSL *s, void *buf, int *len,
     offset += 2 + certlen;
 
     num--;
+    psdebug("num: %d", num);
   }
 
+  psdebug("1: buf: %p, offset: %d, *len: %d", buf, offset, *len);
   memmove(buf + 1 + 2 + offset, buf, *len);
+  psdebug("2");
   memcpy(buf + 1 + 2, blk, offset);
+  psdebug("3");
   p = buf;
+  psdebug("4");
   *(p++) = 0xFF;
+  psdebug("5");
   psdebug("total offset: %d", offset);
   s2n(offset, p);
+  psdebug("6");
   *len = 1 + 2 + offset + *len;
+  psdebug("7");
 
   // buf should be same and len should be increased
   fend("buf: %p, len: %d", buf, *len);
