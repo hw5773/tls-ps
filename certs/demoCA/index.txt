@@ -1,3 +1,10 @@
 V	200722145005Z		86C36C34645E4C32	unknown	/C=KR/ST=Seoul/L=Seoul/O=rsa cert/OU=rsa/CN=*.rsa.com/emailAddress=rsa@rsa.com
 V	200728073553Z		86C36C34645E4C33	unknown	/C=KR/ST=Seoul/L=Seoul/O=mmlab/OU=mmlab/CN=pub.mmlab.snu.ac.kr/emailAddress=pub@mmlab.snu.ac.kr
 V	200728073607Z		86C36C34645E4C34	unknown	/C=KR/ST=Seoul/L=Seoul/O=mmlab/OU=mmlab/CN=sub.mmlab.snu.ac.kr/emailAddress=sub@mmlab.snu.ac.kr
+V	200731081525Z		86C36C34645E4C35	unknown	/C=KR/ST=Seoul/L=Seoul/O=sub2/OU=MMLAB/CN=sub2@mmlab.snu.ac.kr/emailAddress=sub@mmlab.snu.ac.kr
+V	200731081533Z		86C36C34645E4C36	unknown	/C=KR/ST=Seoul/L=Seoul/O=sub3/OU=mmlab/CN=sub3.mmlab.snu.ac.kr/emailAddress=sub3@mmlab.snu.ac.kr
+V	200731081539Z		86C36C34645E4C37	unknown	/C=KR/ST=Seoul/L=Seoul/O=sub4/OU=mmlab/CN=sub4.mmlab.snu.ac.kr/emailAddress=sub4@mmlab.snu.ac.kr
+V	200731081544Z		86C36C34645E4C38	unknown	/C=KR/ST=Seoul/L=Seoul/O=mmlab/OU=mmlab/CN=sub5.mmlab.snu.ac.kr/emailAddress=sub5@mmlab.snu.ac.kr
+V	200731081550Z		86C36C34645E4C39	unknown	/C=KR/ST=Seoul/L=Seoul/O=snu/OU=mmlab/CN=sub6.mmlab.snu.ac.kr/emailAddress=sub6@mmlab.snu.ac.kr
+V	200731081556Z		86C36C34645E4C3A	unknown	/C=KR/ST=Seoul/L=Seoul/O=snu/OU=mmlab/CN=sub7.mmlab.snu.ac.kr/emailAddress=sub7@mmlab.snu.ac.kr
+V	200731081601Z		86C36C34645E4C3B	unknown	/C=KR/ST=Seoul/L=Seoul/O=mmlab/OU=mmlab/CN=sub8.mmlab.snu.ac.kr/emailAddress=sub8@mmlab.snu.ac.kr
